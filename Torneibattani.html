@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Torneo Calciobalilla Live</title>
+  
+  <!-- Firebase App & Database -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --accent: #22c55e;
+      --text: #f8fafc;
+      --subtext: #94a3b8;
+      --border: #334155;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --blue: #3b82f6;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .container { width: 100%; max-width: 650px; }
+    h1, h2, h3, h4 { text-align: center; margin: 12px 0; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    input, select, button, textarea {
+      width: 100%; 
+      padding: 12px; 
+      margin: 6px 0;
+      border-radius: 8px; 
+      border: 1px solid var(--border);
+      background: #0f172a; 
+      color: #fff; 
+      font-size: 15px;
+      box-sizing: border-box;
+    }
+
+    button { 
+      background: var(--accent); 
+      color: #000; 
+      font-weight: bold; 
+      border: none; 
+      cursor: pointer; 
+    }
+    button:active { opacity: 0.8; }
+
+    .btn-blue { background: var(--blue); color: #fff; }
+    .btn-danger { background: var(--danger); color: #fff; margin-top: 20px; }
+    .hidden { display: none !important; }
+    .flex-row { display: flex; gap: 8px; }
+
+    .badge { 
+      background: var(--border); 
+      padding: 4px 8px; 
+      border-radius: 4px; 
+      font-size: 12px; 
+    }
+
+    .table-card { 
+      border: 2px solid var(--accent); 
+      background: #064e3b; 
+      padding: 12px; 
+      border-radius: 10px; 
+      margin-bottom: 10px; 
+    }
+
+    .notification-banner {
+      background: #f59e0b; 
+      color: #000; 
+      padding: 16px; 
+      border-radius: 10px;
+      font-weight: bold; 
+      text-align: center; 
+      font-size: 16px; 
+      margin-bottom: 16px;
+    }
+
+    .btn-bell {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 4px 8px;
+      border-radius: 6px;
+      width: auto;
+      margin: 0;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .btn-bell.active {
+      background: var(--warning);
+      color: #000;
+      font-weight: bold;
+    }
+
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { 
+      background: #0f172a; 
+      padding: 10px; 
+      border-radius: 6px; 
+      margin-bottom: 6px; 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center; 
+    }
+
+    .standings-title {
+      background: var(--border);
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-top: 14px;
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    @media print {
+      body { background: #fff; color: #000; }
+      .no-print, button, input, select, textarea { display: none !important; }
+      .card { border: 1px solid #ccc; background: #fff; color: #000; }
+      .table-card { background: #e6fffa; border: 1px solid #000; color: #000; }
+      li { background: #f0f0f0; color: #000; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>⚽ Torneo Calciobalilla Live</h1>
+
+  <!-- STEP 1: SCELTA RUOLO -->
+  <div id="step-role" class="card no-print">
+    <h2>Seleziona Accesso</h2>
+    <button onclick="setRole('admin')">🔑 Amministratore (Gestisci Torneo)</button>
+    <button class="btn-blue" onclick="setRole('viewer')">👁️ Spettatore Live</button>
+  </div>
+
+  <!-- STEP 2: SCELTA MODALITÀ -->
+  <div id="step-mode" class="card hidden no-print">
+    <h2>Seleziona Modalità Torneo</h2>
+    <button onclick="selectMode('fisse')">1. Coppie Fisse / Singoli</button>
+    <button onclick="selectMode('giallo')">2. Giallo (Attaccanti / Portieri)</button>
+    <button onclick="selectMode('vite')">3. Baraonda a Vite</button>
+  </div>
+
+  <!-- STEP 3: CONFIGURAZIONE -->
+  <div id="step-config" class="card hidden no-print">
+    <h2>Configurazione Torneo</h2>
+    <label>ID Stanza Live (Codice condiviso):</label>
+    <input type="text" id="roomId" value="TorneoRavenna1">
+
+    <label>Numero Tavoli Disponibili:</label>
+    <input type="number" id="numTables" value="2" min="1">
+
+    <!-- CONFIGURAZIONE COPPIE FISSE -->
+    <div id="opts-fisse">
+      <label>Numero Gironi:</label>
+      <input type="number" id="numGroups" value="1" min="1">
+      
+      <label>Passano all'Eliminazione Diretta (Playoff):</label>
+      <select id="fissePlayoff">
+        <option value="4">Prime 4 Coppie (Semifinali)</option>
+        <option value="8">Prime 8 Coppie (Quarti di Finale)</option>
+        <option value="16">Prime 16 Coppie (Ottavi di Finale)</option>
+        <option value="0">Nessuna Fase Finale (Solo Girone)</option>
+      </select>
+    </div>
+
+    <!-- CONFIGURAZIONE GIALLO -->
+    <div id="opts-giallo" class="hidden">
+      <label>Quante partite a testa nel girone?</label>
+      <input type="number" id="gialloMatches" value="4" min="1">
+
+      <label>Qualificazione Eliminazione Diretta (Playoff):</label>
+      <select id="gialloPlayoff">
+        <option value="4">Top 4 Attaccanti + Top 4 Portieri (Semifinali)</option>
+        <option value="8">Top 8 Attaccanti + Top 8 Portieri (Quarti di Finale)</option>
+        <option value="16">Top 16 Attaccanti + Top 16 Portieri (Ottavi)</option>
+        <option value="0">Nessuna Fase Finale (Solo Girone)</option>
+      </select>
+    </div>
+
+    <!-- CONFIGURAZIONE VITE -->
+    <div id="opts-vite" class="hidden">
+      <label>Vite iniziali per giocatore:</label>
+      <input type="number" id="initialLives" value="5" min="1">
+    </div>
+
+    <button onclick="goToPlayers()">Avanti: Inserisci Lista</button>
+  </div>
+
+  <!-- STEP 4: PARTECIPANTI -->
+  <div id="step-players" class="card hidden no-print">
+    <h2>Inserimento Partecipanti</h2>
+    
+    <div id="input-single">
+      <label>Incolla lista partecipanti o coppie (uno per riga):</label>
+      <textarea id="singlePlayerText" rows="8" placeholder="Marco&#10;Luca&#10;Andrea&#10;Matteo"></textarea>
+      <button onclick="addSinglePlayers()">Elabora Lista</button>
+    </div>
+
+    <div id="input-giallo" class="hidden">
+      <label>Incolla il testo con icone 🥅 (Portieri) e ⚽ (Attaccanti):</label>
+      <textarea id="gialloText" rows="10" placeholder="1. Marco 🥅&#10;2. Luca ⚽"></textarea>
+      <button onclick="parseGialloList()">Estrai Giocatori e Ruoli</button>
+    </div>
+
+    <ul id="addedList" style="margin-top: 10px;"></ul>
+    <button onclick="startTournament()" style="margin-top: 16px;">🚀 Avvia Torneo e Calcola Partite</button>
+  </div>
+
+  <!-- STEP SPETTATORE -->
+  <div id="step-viewer-join" class="card hidden no-print">
+    <h2>Unisciti alla Diretta</h2>
+    <label>Inserisci il Codice Stanza:</label>
+    <input type="text" id="viewerRoomId" value="TorneoRavenna1">
+    <button class="btn-blue" onclick="connectViewer()">Guarda Torneo</button>
+  </div>
+
+  <!-- DASHBOARD PRINCIPALE -->
+  <div id="step-dashboard" class="card hidden">
+    <div class="no-print flex-row" style="margin-bottom: 12px;">
+      <button class="btn-blue" onclick="window.print()">📄 Stampa PDF</button>
+    </div>
+
+    <div id="notif-box" class="notification-banner hidden"></div>
+
+    <h2>🏟️ Tavoli da Gioco</h2>
+    <div id="tables-container"></div>
+
+    <hr style="border-color: var(--border); margin: 16px 0;">
+
+    <h2>📅 Calendario / Prossime Partite (<span id="match-count">0</span>)</h2>
+    <div id="queue-container"></div>
+
+    <hr style="border-color: var(--border); margin: 16px 0;">
+
+    <h2>🏆 Classifica Live</h2>
+    <p style="font-size: 13px; color: var(--subtext); text-align: center; margin-top: -8px;">
+      Clicca la 🔔 vicino al tuo nome per ricevere le notifiche di gioco e preparazione!
+    </p>
+    <div id="standings-container"></div>
+
+    <button class="btn-danger no-print" onclick="resetTournament()">⚠️ Azzera e Ricomincia Torneo</button>
+  </div>
+</div>
+
+<script>
+  // CONFIGURAZIONE FIREBASE
+  const firebaseConfig = {
+    databaseURL: "https://torneo-calciobalillaravenna-default-rtdb.europe-west1.firebasedatabase.app"
+  };
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  let role = 'viewer';
+  let roomId = 'TorneoRavenna1';
+  let myPlayerName = localStorage.getItem('torneo_myPlayer') || '';
+  let lastNotifiedMatch = '';
+  let lastPrepNotifiedMatch = '';
+
+  let state = {
+    tables: [],
+    players: [],
+    queue: [],
+    mode: 'giallo',
+    notif: '',
+    config: {},
+    started: false
+  };
+
+  window.onload = function() {
+    const savedRoom = localStorage.getItem('torneo_roomId');
+    if (savedRoom) {
+      roomId = savedRoom;
+      listenFirebase();
+    }
+  };
+
+  // NOTIFICHE CAMPANELLA (In Campo + Preparazione)
+  function toggleMyNotification(playerName) {
+    if ("Notification" in window) {
+      Notification.requestPermission().then(permission => {
+        if (permission === "granted") {
+          if (myPlayerName === playerName) {
+            myPlayerName = '';
+            localStorage.removeItem('torneo_myPlayer');
+            alert("Notifiche disattivate.");
+          } else {
+            myPlayerName = playerName;
+            localStorage.setItem('torneo_myPlayer', playerName);
+            alert(`Notifiche attivate per ${playerName}! Riceverai un avviso quando devi giocare o prepararti.`);
+          }
+          renderDashboard();
+        } else {
+          alert("Devi autorizzare le notifiche nel tuo browser.");
+        }
+      });
+    } else {
+      alert("Il tuo browser non supporta le notifiche.");
+    }
+  }
+
+  function checkMyMatchNotification() {
+    if (!myPlayerName) return;
+
+    // 1. Notifica di chiamata immediata AL TAVOLO
+    state.tables.forEach(t => {
+      if (t.busy && t.match) {
+        let isMyTurn = t.match.t1.includes(myPlayerName) || t.match.t2.includes(myPlayerName);
+        let matchKey = `PLAY-${t.id}-${t.match.t1.join('-')}-${t.match.t2.join('-')}`;
+
+        if (isMyTurn && lastNotifiedMatch !== matchKey) {
+          lastNotifiedMatch = matchKey;
+          if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 400]);
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("⚽ TOCCA A TE! VAI AL TAVOLO", {
+              body: `Tavolo ${t.id}: ${t.match.t1.join(' + ')} VS ${t.match.t2.join(' + ')}`,
+              icon: '⚽'
+            });
+          }
+        }
+      }
+    });
+
+    // 2. Notifica di PREPARAZIONE (Partita subito successiva in coda)
+    if (state.queue && state.queue.length > 0) {
+      let nextMatch = state.queue[0];
+      let isMyNext = nextMatch.t1.includes(myPlayerName) || nextMatch.t2.includes(myPlayerName);
+      let matchPrepKey = `PREP-${nextMatch.t1.join('-')}-${nextMatch.t2.join('-')}`;
+
+      if (isMyNext && lastPrepNotifiedMatch !== matchPrepKey) {
+        lastPrepNotifiedMatch = matchPrepKey;
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        if ("Notification" in window && Notification.permission === "granted") {
+          new Notification("📣 SI PREPARA AL CAMPO!", {
+            body: `Sei nella prossima partita in coda:\n${nextMatch.t1.join(' + ')} VS ${nextMatch.t2.join(' + ')}`,
+            icon: '⚠️'
+          });
+        }
+      }
+    }
+  }
+
+  // FLUSSO SETUP
+  function setRole(r) {
+    role = r;
+    document.getElementById('step-role').classList.add('hidden');
+    if (role === 'admin') {
+      if (state.started) {
+        document.getElementById('step-dashboard').classList.remove('hidden');
+      } else {
+        document.getElementById('step-mode').classList.remove('hidden');
+      }
+    } else {
+      document.getElementById('step-viewer-join').classList.remove('hidden');
+    }
+  }
+
+  function selectMode(mode) {
+    state.mode = mode;
+    document.getElementById('step-mode').classList.add('hidden');
+    document.getElementById('step-config').classList.remove('hidden');
+
+    document.getElementById('opts-fisse').classList.add('hidden');
+    document.getElementById('opts-giallo').classList.add('hidden');
+    document.getElementById('opts-vite').classList.add('hidden');
+
+    if (mode === 'fisse') document.getElementById('opts-fisse').classList.remove('hidden');
+    if (mode === 'giallo') document.getElementById('opts-giallo').classList.remove('hidden');
+    if (mode === 'vite') document.getElementById('opts-vite').classList.remove('hidden');
+  }
+
+  function goToPlayers() {
+    roomId = document.getElementById('roomId').value.trim() || 'TorneoRavenna1';
+    localStorage.setItem('torneo_roomId', roomId);
+
+    let numT = parseInt(document.getElementById('numTables').value) || 2;
+    state.tables = [];
+    for (let i = 1; i <= numT; i++) state.tables.push({ id: i, busy: false, match: null });
+
+    state.config.groups = parseInt(document.getElementById('numGroups').value) || 1;
+    state.config.fissePlayoff = parseInt(document.getElementById('fissePlayoff').value) || 4;
+    state.config.gialloMatches = parseInt(document.getElementById('gialloMatches').value) || 4;
+    state.config.gialloPlayoff = parseInt(document.getElementById('gialloPlayoff').value) || 4;
+    
+    let livesInput = parseInt(document.getElementById('initialLives').value);
+    state.config.initialLives = !isNaN(livesInput) && livesInput > 0 ? livesInput : 5;
+
+    document.getElementById('step-config').classList.add('hidden');
+    document.getElementById('step-players').classList.remove('hidden');
+
+    if (state.mode === 'giallo') {
+      document.getElementById('input-single').classList.add('hidden');
+      document.getElementById('input-giallo').classList.remove('hidden');
+    }
+  }
+
+  function parseGialloList() {
+    const raw = document.getElementById('gialloText').value;
+    const lines = raw.split('\n');
+    state.players = [];
+
+    lines.forEach(line => {
+      let isPortiere = line.includes('g') || line.includes('🥅');
+      let isAttaccante = line.includes('a') || line.includes('⚽');
+
+      if (isPortiere || isAttaccante) {
+        let name = line.replace(/[0-9\.\-\:\,\;]/g, '')
+                       .replace(/🥅|⚽️|⚽/g, '')
+                       .trim();
+
+        if (name.length > 0) {
+          state.players.push({
+            name: name,
+            role: isPortiere ? 'P' : 'A',
+            points: 0,
+            goalsDiff: 0,
+            matchesPlayed: 0,
+            partners: [],
+            opponents: []
+          });
+        }
+      }
+    });
+
+    updatePlayersList();
+  }
+
+  function addSinglePlayers() {
+    const raw = document.getElementById('singlePlayerText').value;
+    const lines = raw.split('\n').map(l => l.trim()).filter(l => l !== '');
+    state.players = [];
+
+    lines.forEach(name => {
+      state.players.push({ 
+        name, 
+        points: 0, 
+        goalsDiff: 0, 
+        lives: state.config.initialLives, 
+        partners: [], 
+        opponents: [] 
+      });
+    });
+    updatePlayersList();
+  }
+
+  function updatePlayersList() {
+    const list = document.getElementById('addedList');
+    list.innerHTML = state.players.map(p => `
+      <li>
+        <span>${p.name}</span>
+        <span class="badge">${state.mode === 'vite' ? p.lives + ' Vite ❤️' : (p.role === 'P' ? 'Portiere 🥅' : (p.role === 'A' ? 'Attaccante ⚽️' : 'Giocatore'))}</span>
+      </li>
+    `).join('');
+  }
+
+  // AVVIO TORNEO
+  function startTournament() {
+    if (state.players.length < 4) {
+      alert("Inserisci almeno 4 partecipanti!");
+      return;
+    }
+
+    state.started = true;
+    document.getElementById('step-players').classList.add('hidden');
+    document.getElementById('step-dashboard').classList.remove('hidden');
+
+    if (state.mode === 'vite') {
+      generateViteRound();
+    } else if (state.mode === 'giallo') {
+      generateUniqueGialloMatches();
+    } else if (state.mode === 'fisse') {
+      generateFisseMatches();
+    }
+
+    assignTables();
+    syncToFirebase();
+    listenFirebase();
+  }
+
+  function generateFisseMatches() {
+    state.queue = [];
+    for (let i = 0; i < state.players.length; i++) {
+      for (let j = i + 1; j < state.players.length; j++) {
+        state.queue.push({ t1: [state.players[i].name], t2: [state.players[j].name] });
+      }
+    }
+  }
+
+  function generateViteRound() {
+    state.queue = [];
+    let alive = state.players.filter(p => p.lives > 0).sort(() => 0.5 - Math.random());
+    
+    if (alive.length <= 3) return;
+
+    for (let i = 0; i < alive.length - 3; i += 4) {
+      state.queue.push({
+        t1: [alive[i].name, alive[i+1].name],
+        t2: [alive[i+2].name, alive[i+3].name]
+      });
+    }
+  }
+
+  function generateUniqueGialloMatches() {
+    state.queue = [];
+    if (state.mode !== 'giallo') return;
+
+    let atts = state.players.filter(p => p.role === 'A');
+    let ports = state.players.filter(p => p.role === 'P');
+    let totalTargetRounds = state.config.gialloMatches;
+
+    for (let round = 0; round < totalTargetRounds; round++) {
+      let poolAtts = [...atts].sort((a,b) => a.matchesPlayed - b.matchesPlayed || Math.random() - 0.5);
+      let poolPorts = [...ports].sort((a,b) => a.matchesPlayed - b.matchesPlayed || Math.random() - 0.5);
+
+      while (poolAtts.length >= 2 && poolPorts.length >= 2) {
+        let a1 = poolAtts.shift();
+        let p1Idx = poolPorts.findIndex(p => !a1.partners.includes(p.name));
+        if (p1Idx === -1) p1Idx = 0;
+        let p1 = poolPorts.splice(p1Idx, 1)[0];
+
+        let a2 = poolAtts.shift();
+        let p2Idx = poolPorts.findIndex(p => !a2.partners.includes(p.name));
+        if (p2Idx === -1) p2Idx = 0;
+        let p2 = poolPorts.splice(p2Idx, 1)[0];
+
+        a1.partners.push(p1.name); p1.partners.push(a1.name);
+        a2.partners.push(p2.name); p2.partners.push(a2.name);
+
+        a1.opponents.push(a2.name, p2.name); p1.opponents.push(a2.name, p2.name);
+        a2.opponents.push(a1.name, p1.name); p2.opponents.push(a1.name, p1.name);
+
+        a1.matchesPlayed++; p1.matchesPlayed++;
+        a2.matchesPlayed++; p2.matchesPlayed++;
+
+        state.queue.push({ t1: [a1.name, p1.name], t2: [a2.name, p2.name] });
+      }
+    }
+  }
+
+  function connectViewer() {
+    roomId = document.getElementById('viewerRoomId').value.trim() || 'TorneoRavenna1';
+    localStorage.setItem('torneo_roomId', roomId);
+    document.getElementById('step-viewer-join').classList.add('hidden');
+    document.getElementById('step-dashboard').classList.remove('hidden');
+    listenFirebase();
+  }
+
+  function assignTables() {
+    state.tables.forEach(table => {
+      if (!table.busy && state.queue.length > 0) {
+        let match = state.queue.shift();
+        table.busy = true;
+        table.match = match;
+        
+        let prepMsg = state.queue.length > 0 ? ` | ⚠️ Si preparano: [${state.queue[0].t1.join(' + ')}] VS [${state.queue[0].t2.join(' + ')}]` : '';
+        state.notif = `📣 IN CORSO TAVOLO ${table.id}: [${match.t1.join(' + ')}] VS [${match.t2.join(' + ')}]${prepMsg}`;
+      }
+    });
+  }
+
+  function finishMatch(tableId) {
+    let s1 = parseInt(document.getElementById(`s1-${tableId}`).value);
+    let s2 = parseInt(document.getElementById(`s2-${tableId}`).value);
+
+    if (isNaN(s1) || isNaN(s2)) {
+      alert("Inserisci il punteggio di entrambe le squadre!");
+      return;
+    }
+
+    let t = state.tables.find(x => x.id === tableId);
+    if (!t || !t.match) return;
+
+    let winTeam = s1 > s2 ? t.match.t1 : t.match.t2;
+    let loseTeam = s1 > s2 ? t.match.t2 : t.match.t1;
+    let diff = Math.abs(s1 - s2);
+
+    state.players.forEach(p => {
+      if (winTeam.includes(p.name)) {
+        p.points += 3;
+        p.goalsDiff += diff;
+      }
+      if (loseTeam.includes(p.name)) {
+        p.goalsDiff -= diff;
+        if (state.mode === 'vite') {
+          p.lives = Math.max(0, p.lives - 1);
+        }
+      }
+    });
+
+    t.busy = false;
+    t.match = null;
+    state.notif = `✅ Tavolo ${tableId} Concluso: ${s1} - ${s2}`;
+
+    if (state.mode === 'vite' && state.queue.length === 0) generateViteRound();
+
+    assignTables();
+    syncToFirebase();
+  }
+
+  function syncToFirebase() {
+    if (role === 'admin') db.ref('rooms/' + roomId).set(state);
+  }
+
+  function listenFirebase() {
+    db.ref('rooms/' + roomId).on('value', snapshot => {
+      const data = snapshot.val();
+      if (data) {
+        state = data;
+        if (state.started && role === 'admin') {
+          document.getElementById('step-role').classList.add('hidden');
+          document.getElementById('step-mode').classList.add('hidden');
+          document.getElementById('step-config').classList.add('hidden');
+          document.getElementById('step-players').classList.add('hidden');
+          document.getElementById('step-dashboard').classList.remove('hidden');
+        }
+        renderDashboard();
+        checkMyMatchNotification();
+      }
+    });
+  }
+
+  // RENDER GRAFICO DASHBOARD
+  function renderDashboard() {
+    const nBox = document.getElementById('notif-box');
+    if (state.notif) {
+      nBox.innerText = state.notif;
+      nBox.classList.remove('hidden');
+    } else {
+      nBox.classList.add('hidden');
+    }
+
+    const tContainer = document.getElementById('tables-container');
+    tContainer.innerHTML = state.tables.map(t => `
+      <div class="${t.busy ? 'table-card' : 'card'}">
+        <h3>Tavolo ${t.id} ${t.busy ? '🔴 IN CORSO' : '🟢 LIBERO'}</h3>
+        ${t.busy ? `
+          <p style="font-size: 17px;"><strong>${t.match.t1.join(' + ')}</strong><br>VS<br><strong>${t.match.t2.join(' + ')}</strong></p>
+          ${role === 'admin' ? `
+            <div class="flex-row">
+              <input type="number" id="s1-${t.id}" placeholder="Gol Eq. 1" value="0">
+              <input type="number" id="s2-${t.id}" placeholder="Gol Eq. 2" value="0">
+            </div>
+            <button onclick="finishMatch(${t.id})">Conferma Risultato</button>
+          ` : ''}
+        ` : '<p style="color:var(--subtext)">In attesa di chiamata...</p>'}
+      </div>
+    `).join('');
+
+    const qContainer = document.getElementById('queue-container');
+    const qList = state.queue || [];
+    document.getElementById('match-count').innerText = qList.length;
+
+    qContainer.innerHTML = qList.map((m, idx) => `
+      <li style="${idx === 0 ? 'border: 2px solid var(--warning);' : ''}">
+        <span>
+          <strong>#${idx + 1}</strong>: ${m.t1.join(' + ')} <strong>VS</strong> ${m.t2.join(' + ')}
+          ${idx === 0 ? ' <span style="color:var(--warning); font-weight:bold;">(⚠️ In Preparazione)</span>' : ''}
+        </span>
+        <span class="badge">In Coda</span>
+      </li>
+    `).join('') || '<p style="color:var(--subtext)">Nessuna partita in coda.</p>';
+
+    const sContainer = document.getElementById('standings-container');
+    
+    // CLASSIFICA GIALLO SEPARATA (ATTACCANTI E PORTIERI)
+    if (state.mode === 'giallo') {
+      let atts = state.players.filter(p => p.role === 'A').sort((a,b) => b.points - a.points || b.goalsDiff - a.goalsDiff);
+      let ports = state.players.filter(p => p.role === 'P').sort((a,b) => b.points - a.points || b.goalsDiff - a.goalsDiff);
+      let pLimit = state.config.gialloPlayoff || 4;
+
+      let html = `<div class="standings-title">⚽ CLASSIFICA ATTACCANTI (Passano i primi ${pLimit})</div>`;
+      html += atts.map((p, i) => {
+        let isMe = myPlayerName === p.name;
+        let isQual = i < pLimit;
+        return `
+          <li style="${isQual ? 'border-left: 4px solid var(--accent);' : ''}">
+            <span>
+              <button class="btn-bell ${isMe ? 'active' : ''}" onclick="toggleMyNotification('${p.name}')">
+                ${isMe ? '🔔 Attivo' : '🔕'}
+              </button>
+              ${i+1}. ${p.name} ${isQual ? '<strong>(PLAYOFF)</strong>' : ''}
+            </span>
+            <strong>${p.points} Punti (Diff: ${p.goalsDiff > 0 ? '+' + p.goalsDiff : p.goalsDiff})</strong>
+          </li>
+        `;
+      }).join('');
+
+      html += `<div class="standings-title">🥅 CLASSIFICA PORTIERI (Passano i primi ${pLimit})</div>`;
+      html += ports.map((p, i) => {
+        let isMe = myPlayerName === p.name;
+        let isQual = i < pLimit;
+        return `
+          <li style="${isQual ? 'border-left: 4px solid var(--accent);' : ''}">
+            <span>
+              <button class="btn-bell ${isMe ? 'active' : ''}" onclick="toggleMyNotification('${p.name}')">
+                ${isMe ? '🔔 Attivo' : '🔕'}
+              </button>
+              ${i+1}. ${p.name} ${isQual ? '<strong>(PLAYOFF)</strong>' : ''}
+            </span>
+            <strong>${p.points} Punti (Diff: ${p.goalsDiff > 0 ? '+' + p.goalsDiff : p.goalsDiff})</strong>
+          </li>
+        `;
+      }).join('');
+
+      sContainer.innerHTML = html;
+
+    } else if (state.mode === 'vite') {
+      let aliveVite = state.players.filter(p => p.lives > 0).sort((a,b) => b.lives - a.lives);
+      if (aliveVite.length <= 3) {
+        sContainer.innerHTML = `<h3>🏆 PODIO FINALE 🏆</h3>` + 
+          aliveVite.map((p, i) => `<li><span>🥇 Posiz. ${i+1}: <strong>${p.name}</strong></span> <strong>${p.lives} Vite ❤️</strong></li>`).join('');
+        return;
+      }
+      
+      let allSorted = [...state.players].sort((a,b) => b.lives - a.lives);
+      sContainer.innerHTML = allSorted.map((p, i) => {
+        let isMe = myPlayerName === p.name;
+        return `
+          <li style="${p.lives === 0 ? 'opacity: 0.4;' : ''}">
+            <span>
+              <button class="btn-bell ${isMe ? 'active' : ''}" onclick="toggleMyNotification('${p.name}')">
+                ${isMe ? '🔔 Attivo' : '🔕'}
+              </button>
+              ${i+1}. ${p.name} ${p.lives === 0 ? '(ELIMINATO)' : ''}
+            </span>
+            <strong>${p.lives} Vite ❤️</strong>
+          </li>
+        `;
+      }).join('');
+
+    } else { // COPPIE FISSE / SINGOLI
+      let sorted = [...(state.players || [])].sort((a,b) => b.points - a.points || b.goalsDiff - a.goalsDiff);
+      let pLimit = state.config.fissePlayoff || 4;
+
+      sContainer.innerHTML = sorted.map((p, i) => {
+        let isMe = myPlayerName === p.name;
+        let isQual = i < pLimit;
+        return `
+          <li style="${isQual ? 'border-left: 4px solid var(--accent);' : ''}">
+            <span>
+              <button class="btn-bell ${isMe ? 'active' : ''}" onclick="toggleMyNotification('${p.name}')">
+                ${isMe ? '🔔 Attivo' : '🔕'}
+              </button>
+              ${i+1}. ${p.name} ${isQual ? '<strong>(PLAYOFF)</strong>' : ''}
+            </span>
+            <strong>${p.points} Punti (Diff: ${p.goalsDiff > 0 ? '+' + p.goalsDiff : p.goalsDiff})</strong>
+          </li>
+        `;
+      }).join('');
+    }
+  }
+
+  function resetTournament() {
+    if (confirm("Sei sicuro di voler azzerare l'intero torneo?")) {
+      localStorage.removeItem('torneo_roomId');
+      db.ref('rooms/' + roomId).remove();
+      location.reload();
+    }
+  }
+</script>
+</body>
+</html>
